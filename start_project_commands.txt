@@ -1,0 +1,92 @@
+START PROJECT - COMMANDS (Windows / PowerShell)
+
+Recommended order:
+1) InfluxDB 3
+2) Backend API
+3) Frontend React
+4) Wokwi simulation
+5) Optional public tunnel
+
+==================================================
+TERMINAL 1 - INFLUXDB 3 (local)
+==================================================
+# Ensure InfluxDB 3 is running on port 8181.
+# Example health check from PowerShell:
+Invoke-WebRequest -Uri "http://127.0.0.1:8181/health" -Method Get
+
+==================================================
+TERMINAL 2 - BACKEND (FastAPI + InfluxDB 3)
+==================================================
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet\backend"
+python -m venv venv
+.\venv\Scripts\Activate
+pip install -r requirements.txt
+cd ..
+python start_api.py
+
+Backend URL:
+http://127.0.0.1:8000
+
+API quick checks:
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/actuator/state" -Method Get
+
+==================================================
+TERMINAL 3 - FRONTEND (React)
+==================================================
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet\frontend"
+npm install
+npm run dev
+
+==================================================
+TERMINAL 4 - BUILD ESP32 FIRMWARE (Wokwi local)
+==================================================
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet\esp32"
+python -m pip install platformio
+python -m platformio run
+python -m platformio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32 merge_bin -o .pio/build/esp32dev/firmware.merged.bin --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 .pio/build/esp32dev/bootloader.bin 0x8000 .pio/build/esp32dev/partitions.bin 0x10000 .pio/build/esp32dev/firmware.bin
+
+Then in VS Code:
+1) Wokwi: Stop Simulator
+2) Wokwi: Start Simulator
+3) Open Wokwi Terminal
+
+==================================================
+TERMINAL 5 - OPTIONAL PUBLIC TUNNEL (for Wokwi web)
+==================================================
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet"
+ngrok http 8000
+
+If ngrok URL changes:
+- Update serverUrlNgrokData in esp32/sketch.ino
+- Update serverUrlNgrokActuator in esp32/sketch.ino
+
+==================================================
+DEBUG / LOGS
+==================================================
+# Backend logs
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/logs/raw?lines=200" -Method Get
+
+# Arduino logs collected by API
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/arduino-logs/raw?lines=200" -Method Get
+
+==================================================
+MANUAL API TEST (multi-sensor)
+==================================================
+$body = '{
+  "device_id": "esp32-001",
+  "temperature_c": 29.8,
+  "humidity_pct": 72.4,
+  "sensors": [
+    {"produit_id": "produit-1", "product": "Bac principal", "distance_cm": 80, "valeur": 78},
+    {"produit_id": "produit-2", "product": "Bac secondaire", "distance_cm": 130, "valeur": 60},
+    {"produit_id": "produit-3", "product": "Bac reserve", "distance_cm": 155, "valeur": 52}
+  ]
+}'
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/data" -ContentType "application/json" -Body $body
+
+# Read back history by product
+Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/data?limit=30&produit_id=produit-1"
+
+# Force ventilation manually (relay ON + servo 90)
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/actuator/command" -ContentType "application/json" -Body '{"command":"force_ventilation"}'

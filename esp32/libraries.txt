@@ -1,0 +1,6 @@
+ArduinoJson
+DHT sensor library for ESPx
+Adafruit SSD1306
+Adafruit GFX Library
+Adafruit NeoPixel
+ESP32Servo

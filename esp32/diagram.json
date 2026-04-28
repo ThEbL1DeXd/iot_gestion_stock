@@ -1,0 +1,315 @@
+{
+  "version": 1,
+  "author": "Abdellah",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": -22,
+      "left": -224,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultrasonic1",
+      "top": -126,
+      "left": -54,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultrasonic2",
+      "top": 4,
+      "left": -55,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultrasonic3",
+      "top": 132,
+      "left": -55,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht1",
+      "top": 143,
+      "left": -53,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-ssd1306",
+      "id": "oled1",
+      "top": -165,
+      "left": 142,
+      "attrs": {
+        "i2cAddress": "0x3c"
+      }
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "pixel1",
+      "top": 86,
+      "left": 161,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo1",
+      "top": 176,
+      "left": 179,
+      "attrs": {
+        "horn": "single"
+      }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay1",
+      "top": -30,
+      "left": 187,
+      "attrs": {
+        "transistor": "npn"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "ultrasonic1:VCC",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic1:GND",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic1:TRIG",
+      "esp:5",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic1:ECHO",
+      "esp:18",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic2:VCC",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic2:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic2:TRIG",
+      "esp:17",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic2:ECHO",
+      "esp:16",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic3:VCC",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic3:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic3:TRIG",
+      "esp:32",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultrasonic3:ECHO",
+      "esp:33",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "dht1:VCC",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "dht1:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "dht1:SDA",
+      "esp:15",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "oled1:VIN",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "oled1:GND",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "oled1:DATA",
+      "esp:21",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "oled1:CLK",
+      "esp:22",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pixel1:VDD",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pixel1:VSS",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pixel1:DIN",
+      "esp:12",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servo1:V+",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servo1:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servo1:PWM",
+      "esp:13",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "relay1:VCC",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "relay1:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "relay1:IN",
+      "esp:4",
+      "green",
+      [
+        "v0"
+      ]
+    ]
+  ],
+  "dependencies": {}
+}
