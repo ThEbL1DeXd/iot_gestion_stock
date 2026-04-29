@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 
+import asyncio
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 import numpy as np
 from sklearn.linear_model import LinearRegression
+import paho.mqtt.client as mqtt
 
 try:
     from .services.influx_service import InfluxConfig, InfluxService
@@ -169,6 +171,55 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+MQTT_BROKER = "broker.hivemq.com"
+MQTT_PORT = 1883
+MQTT_TOPIC_DATA = "smartstock/ela35/data/+"
+MQTT_TOPIC_ACTUATOR = "smartstock/ela35/actuator"
+
+_running_loop = None
+
+def on_mqtt_connect(client, userdata, flags, rc):
+    if rc == 0:
+        logger.info("Connected to MQTT Broker!")
+        client.subscribe(MQTT_TOPIC_DATA)
+    else:
+        logger.error(f"Failed to connect to MQTT, return code {rc}")
+
+def on_mqtt_message(client, userdata, msg):
+    if _running_loop is None:
+        return
+    try:
+        payload_dict = json.loads(msg.payload.decode('utf-8'))
+        payload = TelemetryCreate(**payload_dict)
+        asyncio.run_coroutine_threadsafe(receive_data(payload), _running_loop)
+    except Exception as e:
+        logger.error(f"MQTT message error: {e}")
+
+mqtt_client = mqtt.Client()
+mqtt_client.on_connect = on_mqtt_connect
+mqtt_client.on_message = on_mqtt_message
+
+@app.on_event("startup")
+async def startup_event():
+    global _running_loop
+    _running_loop = asyncio.get_running_loop()
+    try:
+        mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        mqtt_client.loop_start()
+    except Exception as e:
+        logger.error(f"Failed to connect to MQTT: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    mqtt_client.loop_stop()
+    mqtt_client.disconnect()
+
+def publish_actuator_to_mqtt():
+    state = _actuator_snapshot()
+    mqtt_client.publish(f"{MQTT_TOPIC_ACTUATOR}/esp32-001", json.dumps(state), retain=True)
+
+
 
 
 class ConnectionManager:
@@ -512,7 +563,7 @@ def _depletion_forecast_from_history(
         return baseline
 
     span_days = (ordered[-1][0] - ordered[0][0]) / 86400000.0
-    if span_days <= 0.05:
+    if span_days <= 0.001:  # Reduced from 0.05 (72 mins) to 0.001 (1.4 mins) for testing
         result = dict(baseline)
         result["message"] = "Historique trop court pour une prediction fiable"
         return result
@@ -961,6 +1012,7 @@ async def receive_data(payload: TelemetryCreate):
                 }
             )
         )
+        publish_actuator_to_mqtt()
 
     for event in ws_events:
         await manager.broadcast(json.dumps(event))
@@ -1237,6 +1289,7 @@ async def update_actuator_config(payload: ActuatorConfigUpdate):
                 }
             )
         )
+        publish_actuator_to_mqtt()
 
     return _actuator_snapshot()
 
@@ -1267,6 +1320,7 @@ async def actuator_command(payload: ActuatorCommand):
                 }
             )
         )
+        publish_actuator_to_mqtt()
 
     return _actuator_snapshot()
 

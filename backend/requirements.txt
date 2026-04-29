@@ -5,3 +5,4 @@ websockets
 pydantic
 scikit-learn
 numpy
+paho-mqtt

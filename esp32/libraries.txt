@@ -4,3 +4,4 @@ Adafruit SSD1306
 Adafruit GFX Library
 Adafruit NeoPixel
 ESP32Servo
+PubSubClient

@@ -52,14 +52,12 @@ Then in VS Code:
 3) Open Wokwi Terminal
 
 ==================================================
-TERMINAL 5 - OPTIONAL PUBLIC TUNNEL (for Wokwi web)
+TERMINAL 5 - OPTIONAL PUBLIC TUNNEL (For Webhooks/Frontend)
 ==================================================
 cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet"
 ngrok http 8000
 
-If ngrok URL changes:
-- Update serverUrlNgrokData in esp32/sketch.ino
-- Update serverUrlNgrokActuator in esp32/sketch.ino
+Note: The ESP32 no longer needs ngrok, it uses the public MQTT broker `broker.hivemq.com`.
 
 ==================================================
 DEBUG / LOGS

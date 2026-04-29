@@ -1,6 +1,5 @@
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
+#include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <DHTesp.h>
 #include <Wire.h>
@@ -13,11 +12,10 @@
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
 
-// ---- API endpoints ----
-const char* serverUrlLocalData = "http://host.wokwi.internal:8000/data";
-const char* serverUrlNgrokData = "https://94cf-196-70-248-113.ngrok-free.app/data";
-const char* serverUrlLocalActuator = "http://host.wokwi.internal:8000/actuator/state";
-const char* serverUrlNgrokActuator = "https://94cf-196-70-248-113.ngrok-free.app/actuator/state";
+// ---- MQTT ----
+const char* mqtt_server = "broker.hivemq.com";
+const char* mqtt_topic_data = "smartstock/ela35/data/esp32-001";
+const char* mqtt_topic_actuator = "smartstock/ela35/actuator/esp32-001";
 
 const char* deviceId = "esp32-001";
 
@@ -55,7 +53,8 @@ struct SensorSnapshot {
   int stockPercent;
 };
 
-WiFiClientSecure secureClient;
+WiFiClient espClient;
+PubSubClient client(espClient);
 DHTesp dhtSensor;
 Adafruit_SSD1306 oledDisplay(oledWidth, oledHeight, &Wire, -1);
 Adafruit_NeoPixel statusPixel(1, neoPixelPin, NEO_GRB + NEO_KHZ800);
@@ -186,95 +185,6 @@ void renderLocalDashboard(
   oledDisplay.display();
 }
 
-int postJsonToUrl(const char* url, const String& jsonBody) {
-  HTTPClient http;
-  http.setConnectTimeout(15000);
-  http.setTimeout(15000);
-  http.setReuse(false);
-
-  String urlStr = String(url);
-  bool beginOk = false;
-
-  if (urlStr.startsWith("https://")) {
-    secureClient.setInsecure();
-    secureClient.setTimeout(15000);
-    beginOk = http.begin(secureClient, urlStr);
-  } else {
-    beginOk = http.begin(urlStr);
-  }
-
-  if (!beginOk) {
-    Serial.println("Erreur HTTP: begin() failed");
-    return -100;
-  }
-
-  http.addHeader("Content-Type", "application/json");
-  int httpCode = http.POST(jsonBody);
-
-  if (httpCode > 0) {
-    Serial.print("Code HTTP POST: ");
-    Serial.println(httpCode);
-  } else {
-    Serial.print("Erreur HTTP POST: ");
-    Serial.println(httpCode);
-    Serial.print("Detail: ");
-    Serial.println(http.errorToString(httpCode));
-  }
-
-  http.end();
-  secureClient.stop();
-  return httpCode;
-}
-
-bool fetchActuatorStateFromUrl(const char* url, String& stateOut, String& modeOut, float& thresholdOut) {
-  HTTPClient http;
-  http.setConnectTimeout(10000);
-  http.setTimeout(10000);
-
-  String urlStr = String(url);
-  bool beginOk = false;
-
-  if (urlStr.startsWith("https://")) {
-    secureClient.setInsecure();
-    secureClient.setTimeout(10000);
-    beginOk = http.begin(secureClient, urlStr);
-  } else {
-    beginOk = http.begin(urlStr);
-  }
-
-  if (!beginOk) {
-    return false;
-  }
-
-  int httpCode = http.GET();
-  if (httpCode <= 0) {
-    http.end();
-    secureClient.stop();
-    return false;
-  }
-
-  if (httpCode >= 300) {
-    http.end();
-    secureClient.stop();
-    return false;
-  }
-
-  String response = http.getString();
-  http.end();
-  secureClient.stop();
-
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, response);
-  if (err) {
-    return false;
-  }
-
-  stateOut = String((const char*)(doc["state"] | "off"));
-  modeOut = String((const char*)(doc["mode"] | "auto"));
-  thresholdOut = (float)(doc["humidity_threshold_pct"] | 75.0);
-  return true;
-}
-
 void applyActuatorState(const String& state, const String& mode, float threshold) {
   bool on = state.equalsIgnoreCase("on");
   digitalWrite(relayPin, on ? HIGH : LOW);
@@ -291,6 +201,41 @@ void applyActuatorState(const String& state, const String& mode, float threshold
   Serial.print(" | seuil_humidite=");
   Serial.println(threshold, 1);
 }
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  String message;
+  for (int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+  
+  if (String(topic) == mqtt_topic_actuator) {
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, message);
+    if (!err) {
+      String stateOut = String((const char*)(doc["state"] | "off"));
+      String modeOut = String((const char*)(doc["mode"] | "auto"));
+      float thresholdOut = (float)(doc["humidity_threshold_pct"] | 75.0);
+      applyActuatorState(stateOut, modeOut, thresholdOut);
+    }
+  }
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    if (client.connect("ESP32Client_SmartStock")) {
+      Serial.println("connected");
+      client.subscribe(mqtt_topic_actuator);
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
+
 
 int sendTelemetry(const SensorSnapshot* snapshots, size_t count, bool envValid, float temperatureC, float humidityPct) {
   JsonDocument doc;
@@ -316,14 +261,13 @@ int sendTelemetry(const SensorSnapshot* snapshots, size_t count, bool envValid, 
   String jsonBody;
   serializeJson(doc, jsonBody);
 
-  Serial.println("Envoi telemetrie multi-capteurs (local) ...");
-  int httpCode = postJsonToUrl(serverUrlLocalData, jsonBody);
-  if (httpCode > 0) {
-    return httpCode;
+  Serial.println("Envoi telemetrie via MQTT...");
+  if (client.publish(mqtt_topic_data, jsonBody.c_str())) {
+    return 200;
+  } else {
+    Serial.println("Erreur de publication MQTT");
+    return -1;
   }
-
-  Serial.println("Fallback telemetrie vers ngrok ...");
-  return postJsonToUrl(serverUrlNgrokData, jsonBody);
 }
 
 void connectWifi() {
@@ -394,6 +338,9 @@ void setup() {
   Serial.println("Mode capteurs: ToF VL53L1X + BME280 (fallback Wokwi: HC-SR04 + DHT22)");
 
   connectWifi();
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+  client.setBufferSize(1024);
   Serial.println("Pret a envoyer les donnees, mettre a jour OLED et piloter actionneur...");
 }
 
@@ -405,6 +352,11 @@ void loop() {
     delay(1000);
     return;
   }
+
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
 
   SensorSnapshot snapshots[DISTANCE_SENSOR_COUNT];
   int worstStock = 100;
@@ -469,41 +421,6 @@ void loop() {
     envData.temperature,
     envData.humidity
   );
-
-  String actuatorState = "off";
-  String actuatorMode = "auto";
-  float actuatorThreshold = 75.0;
-
-  bool gotActuator = fetchActuatorStateFromUrl(
-    serverUrlLocalActuator,
-    actuatorState,
-    actuatorMode,
-    actuatorThreshold
-  );
-
-  if (!gotActuator) {
-    gotActuator = fetchActuatorStateFromUrl(
-      serverUrlNgrokActuator,
-      actuatorState,
-      actuatorMode,
-      actuatorThreshold
-    );
-  }
-
-  if (gotActuator) {
-    applyActuatorState(actuatorState, actuatorMode, actuatorThreshold);
-    updateStatusPixel(worstStock, actuatorState.equalsIgnoreCase("on"));
-    renderLocalDashboard(
-      snapshots,
-      DISTANCE_SENSOR_COUNT,
-      envValid,
-      envData.temperature,
-      envData.humidity,
-      true
-    );
-  } else {
-    Serial.println("Impossible de recuperer l etat actionneur.");
-  }
 
   delay(5000);
 }

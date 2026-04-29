@@ -5,6 +5,7 @@ Systeme IoT de gestion de stock avec telemetrie temps reel, moteur de regles, pr
 ## Vue d ensemble
 
 - ESP32 simule sous Wokwi avec multi-capteurs, OLED, NeoPixel, relais et servo.
+- Communication asynchrone via **MQTT** (broker public `broker.hivemq.com`).
 - Backend FastAPI pour recevoir la telemetrie, generer des alertes et piloter l actionneur.
 - InfluxDB 3 pour stocker les donnees time-series.
 - Frontend React/Vite pour le dashboard temps reel en WebSocket.
@@ -95,16 +96,29 @@ Dans VS Code:
 2. `Wokwi: Start Simulator` pour relancer la simulation.
 3. Ouvrez le terminal serie du simulateur pour suivre les logs.
 
-### 5. Tunnel public optionnel
+### 5. Tunnel public optionnel (Frontend / Webhooks)
 
-Si Wokwi web doit joindre votre backend local, ouvrez un tunnel ngrok:
+Si vous avez besoin d acceder au frontend React depuis l exterieur ou de configurer des webhooks, vous pouvez ouvrir un tunnel ngrok:
 
 ```powershell
 cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet"
 ngrok http 8000
 ```
+Note : L'ESP32 n'utilise plus ngrok car il communique directement avec le broker MQTT public `broker.hivemq.com`.
 
-Si l URL change, mettez a jour `serverUrlNgrokData` et `serverUrlNgrokActuator` dans `esp32/sketch.ino`.
+## Comment tester manuellement (MQTT)
+
+Le backend et l'ESP32 ecoutent et publient sur des topics MQTT. Vous pouvez utiliser un client comme [MQTT Explorer](http://mqtt-explorer.com/) ou des scripts Python pour tester:
+
+1. **Broker** : `broker.hivemq.com` (Port `1883`)
+2. **Envoyer de la telemetrie** (Test du backend) :
+   - Topic : `smartstock/ela35/data/esp32-001`
+   - Payload JSON : `{"device_id": "esp32-001", "valeur": 42}`
+3. **Controler l'actionneur** (Test de l'ESP32) :
+   - Topic : `smartstock/ela35/actuator/esp32-001`
+   - Payload JSON : `{"state": "on", "mode": "manual", "humidity_threshold_pct": 75.0}`
+
+(Note: Le backend met a jour le topic de l'actionneur automatiquement quand vous utilisez le endpoint REST `POST /actuator/command`).
 
 ## Commandes utiles
 
@@ -204,11 +218,15 @@ Mode recommande:
 }
 ```
 
-## Endpoints API
+## Endpoints API & MQTT
 
-### Telemetrie
+### Topics MQTT
 
-- `POST /data`
+- Telemetrie (Publie par ESP32, ecoute par Backend) : `smartstock/ela35/data/+`
+- Actionneur (Publie par Backend, ecoute par ESP32) : `smartstock/ela35/actuator/esp32-001`
+
+### Telemetrie (REST)
+
 - `GET /data?limit=120&produit_id=produit-1`
 - `GET /products`
 - `GET /prediction?produit_id=produit-1`
@@ -220,7 +238,7 @@ Mode recommande:
 - `GET /alerts/config`
 - `POST /alerts/config`
 
-### Actionneur
+### Actionneur (REST)
 
 - `GET /actuator/state`
 - `POST /actuator/config`
@@ -310,5 +328,5 @@ LIMIT 100;
 
 - Si `GET /health` echoue, verifiez d abord InfluxDB 3 puis le backend.
 - Si le frontend ne charge pas, relancez `npm install` puis `npm run dev`.
-- Si la simulation Wokwi ne recoit rien, verifiez `ngrok` et les URLs dans `esp32/sketch.ino`.
+- Si la simulation Wokwi ne recoit rien, verifiez la connexion internet (broker `broker.hivemq.com`).
 - Si vous testez les alertes, regardez aussi `GET /alerts` et `GET /logs/raw`.
