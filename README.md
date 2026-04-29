@@ -1,94 +1,181 @@
 # Smart Stock IoT - InfluxDB 3 Edition
 
-Systeme intelligent de gestion de stock IoT avec:
-- ESP32 (Wokwi) multi-capteurs distance + interface locale OLED/NeoPixel
-- FastAPI backend
-- InfluxDB 3 (IOx) pour la telemetrie time-series
-- React dashboard temps reel (WebSocket)
-- Actionneur pilote par seuil d humidite (relais + servo)
-- Analyse predictive de rupture (regression lineaire)
-- Alertes multi-canaux (UI + email + webhook + Telegram Bot)
+Systeme IoT de gestion de stock avec telemetrie temps reel, moteur de regles, prediction de rupture et actionneur automatise.
 
-## Architecture
+## Vue d ensemble
 
-- esp32/: firmware Wokwi (distance stabilisee type ToF, env type BME target, OLED SSD1306, NeoPixel, relais + servo)
-- backend/: API FastAPI + moteur de regles + integration InfluxDB 3
-- frontend/: dashboard React (charts, alertes, controle actionneur)
-- db/: ancien SQL MySQL (historique, non utilise dans cette version)
+- ESP32 simule sous Wokwi avec multi-capteurs, OLED, NeoPixel, relais et servo.
+- Backend FastAPI pour recevoir la telemetrie, generer des alertes et piloter l actionneur.
+- InfluxDB 3 pour stocker les donnees time-series.
+- Frontend React/Vite pour le dashboard temps reel en WebSocket.
+- Prediction lineaire pour estimer la rupture de stock.
+- Notifications multi-canaux via UI, email, webhook et Telegram.
 
-## Upgrade materiel (Wokwi)
+## Structure du projet
 
-- Cible projet: VL53L1X (ToF) + BME280
-- Limitation Wokwi actuelle: ces capteurs ne sont pas exposes comme parts natives dans la liste officielle.
-- Strategie appliquee: fallback simulation sur HC-SR04 + DHT22 avec filtrage median pour une distance plus stable.
-- Composants ajoutes en simulation:
-  - OLED SSD1306 (I2C, affichage local de l etat)
-  - NeoPixel WS2812B (etat visuel global)
-  - Servo (position ON/OFF)
-  - Relais (commutation ON/OFF)
+- `esp32/` : firmware Wokwi, diagramme et configuration PlatformIO.
+- `backend/` : API FastAPI, regles metier, alertes et integration InfluxDB 3.
+- `frontend/` : dashboard React temps reel.
+- `db/` : ancien schema SQL conserve pour reference.
+- `start_api.py` : lanceur Python du backend.
+- `start_project_commands.txt` : resume rapide des commandes de demarrage.
 
-## Schema InfluxDB 3
+## Fonctionnalites
 
-Measurement: stock_data
+- reception de payload legacy `{"valeur": 42}` ou multi-capteurs.
+- enregistrement des mesures dans `stock_data`.
+- regles sur stock, temperature, humidite et combinaison critique.
+- commande manuelle ou automatique de l actionneur.
+- historique, alertes acquittables et logs.
+- prediction de rupture avec seuil d alerte proactive.
 
-Tags:
-- produit_id
-- device_id (optionnel)
-- product
+## Prerequis
 
-Fields:
-- distance (float)
-- humidite (float)
-- etat_relais (int: 0/1)
-- angle_servo (int: 0/90)
-- valeur (int, optionnel)
-- temperature_c (float)
+- Python 3.10+.
+- Node.js 18+.
+- InfluxDB 3 accessible en local sur `http://127.0.0.1:8181`.
+- PlatformIO pour compiler le firmware ESP32.
+- Wokwi dans VS Code si vous voulez lancer la simulation.
 
-Time column:
-- time (timestamp)
+## Demarrage rapide
 
-## Variables d environnement backend
+L ordre recommande est: InfluxDB 3, backend, frontend, firmware ESP32, puis tunnel optionnel si besoin.
 
-- INFLUX_URL (defaut: http://localhost:8181)
-- INFLUX_DATABASE (defaut: smart_stock)
-- INFLUX_BUCKET (defaut: smart_stock)
-- INFLUX_ORG (optionnel, utile pour endpoint v2)
-- INFLUX_TOKEN (optionnel)
-- INFLUX_TIMEOUT_SECONDS (defaut: 8)
+### 1. InfluxDB 3
 
-Alertes:
-- ALERT_STOCK_WARNING
-- ALERT_STOCK_CRITICAL
-- ALERT_TEMP_WARNING_C
-- ALERT_TEMP_CRITICAL_C
-- ALERT_HUMIDITY_LOW_WARNING
-- ALERT_HUMIDITY_HIGH_WARNING
-- ALERT_HUMIDITY_LOW_CRITICAL
-- ALERT_HUMIDITY_HIGH_CRITICAL
-- ALERT_COMBINATION_TEMP_BOOST_C
-- ALERT_COOLDOWN_SECONDS
+Verifiez que le service repond sur le port `8181`.
 
-Prediction:
-- PREDICTIVE_ALERT_DAYS (defaut 3)
+```powershell
+Invoke-WebRequest -Uri "http://127.0.0.1:8181/health" -Method Get
+```
 
-Notifications Telegram (optionnel):
-- TELEGRAM_TOKEN
-- TELEGRAM_CHAT_ID
+### 2. Backend FastAPI
 
-Actionneur:
-- ACTUATOR_MODE (auto | manual, defaut auto)
-- ACTUATOR_HUMIDITY_THRESHOLD_PCT (defaut 75)
+Depuis la racine du projet, lancez:
 
-## Payload capteur accepte
+```powershell
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet\backend"
+python -m venv venv
+.\venv\Scripts\Activate
+pip install -r requirements.txt
+cd ..
+python start_api.py
+```
 
-Ancien mode (retrocompatible):
+Le backend demarre sur `http://127.0.0.1:8000`.
 
+Test rapide:
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get
+```
+
+### 3. Frontend React
+
+```powershell
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet\frontend"
+npm install
+npm run dev
+```
+
+Le dashboard Vite est generalement disponible sur `http://localhost:5173`.
+
+### 4. Firmware ESP32 / Wokwi
+
+```powershell
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet\esp32"
+python -m pip install platformio
+python -m platformio run
+python -m platformio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32 merge_bin -o .pio/build/esp32dev/firmware.merged.bin --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 .pio/build/esp32dev/bootloader.bin 0x8000 .pio/build/esp32dev/partitions.bin 0x10000 .pio/build/esp32dev/firmware.bin
+```
+
+Dans VS Code:
+
+1. `Wokwi: Stop Simulator` si une session tourne deja.
+2. `Wokwi: Start Simulator` pour relancer la simulation.
+3. Ouvrez le terminal serie du simulateur pour suivre les logs.
+
+### 5. Tunnel public optionnel
+
+Si Wokwi web doit joindre votre backend local, ouvrez un tunnel ngrok:
+
+```powershell
+cd "C:\Users\ela35\OneDrive\Documents\cour\IOT\projet"
+ngrok http 8000
+```
+
+Si l URL change, mettez a jour `serverUrlNgrokData` et `serverUrlNgrokActuator` dans `esp32/sketch.ino`.
+
+## Commandes utiles
+
+Backend:
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/logs/raw?lines=200" -Method Get
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/arduino-logs/raw?lines=200" -Method Get
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/actuator/command" -ContentType "application/json" -Body '{"command":"force_ventilation"}'
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm run build
+npm run preview
+```
+
+ESP32:
+
+```powershell
+cd esp32
+python -m platformio run
+```
+
+## Variables d environnement
+
+### InfluxDB
+
+- `INFLUX_URL` par defaut `http://localhost:8181`
+- `INFLUX_DATABASE` par defaut `smart_stock`
+- `INFLUX_BUCKET` par defaut `smart_stock`
+- `INFLUX_ORG` optionnel
+- `INFLUX_TOKEN` optionnel
+- `INFLUX_TIMEOUT_SECONDS` par defaut `8`
+
+### Regles et prediction
+
+- `ALERT_STOCK_WARNING`
+- `ALERT_STOCK_CRITICAL`
+- `ALERT_TEMP_WARNING_C`
+- `ALERT_TEMP_CRITICAL_C`
+- `ALERT_HUMIDITY_LOW_WARNING`
+- `ALERT_HUMIDITY_HIGH_WARNING`
+- `ALERT_HUMIDITY_LOW_CRITICAL`
+- `ALERT_HUMIDITY_HIGH_CRITICAL`
+- `ALERT_COMBINATION_TEMP_BOOST_C`
+- `ALERT_COOLDOWN_SECONDS`
+- `PREDICTIVE_ALERT_DAYS` par defaut `3`
+
+### Notifications et actionneur
+
+- `TELEGRAM_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `ACTUATOR_MODE` (`auto` ou `manual`, defaut `auto`)
+- `ACTUATOR_HUMIDITY_THRESHOLD_PCT` par defaut `75`
+
+## Payload capteur
+
+Mode legacy retrocompatible:
+
+```json
 {
   "valeur": 42
 }
+```
 
-Mode multi-capteurs recommande:
+Mode recommande:
 
+```json
 {
   "device_id": "esp32-001",
   "timestamp_ms": 1730000012345,
@@ -115,49 +202,52 @@ Mode multi-capteurs recommande:
     }
   ]
 }
+```
 
 ## Endpoints API
 
-Telemetrie:
-- POST /data
-- GET /data?limit=120&produit_id=produit-1
-- GET /products
-- GET /prediction?produit_id=produit-1
+### Telemetrie
 
-Alertes:
-- GET /alerts
-- POST /alerts/{alert_id}/ack
-- GET /alerts/config
-- POST /alerts/config
+- `POST /data`
+- `GET /data?limit=120&produit_id=produit-1`
+- `GET /products`
+- `GET /prediction?produit_id=produit-1`
 
-Actionneur:
-- GET /actuator/state
-- POST /actuator/config
-- POST /actuator/command
-  - command: auto | on | off | force_ventilation
+### Alertes
 
-Observabilite:
-- GET /health
-- GET /logs
-- GET /logs/raw
-- POST /arduino-log
-- GET /arduino-logs
-- GET /arduino-logs/raw
+- `GET /alerts`
+- `POST /alerts/{alert_id}/ack`
+- `GET /alerts/config`
+- `POST /alerts/config`
 
-Temps reel:
-- WS /ws
-  - telemetry
-  - telemetry_batch
-  - alert
-  - actuator
-  - heartbeat
+### Actionneur
 
-## Prediction de rupture (Smart)
+- `GET /actuator/state`
+- `POST /actuator/config`
+- `POST /actuator/command`
+- commandes possibles: `auto`, `on`, `off`, `force_ventilation`
 
-Le backend calcule une regression lineaire sur l historique temporel de chaque produit.
+### Observabilite
 
-Exemple de sortie /prediction:
+- `GET /health`
+- `GET /logs`
+- `GET /logs/raw`
+- `POST /arduino-log`
+- `GET /arduino-logs`
+- `GET /arduino-logs/raw`
 
+### Temps reel
+
+- WebSocket `WS /ws`
+- evenements: `telemetry`, `telemetry_batch`, `alert`, `actuator`, `heartbeat`
+
+## Prediction de rupture
+
+Le backend calcule une regression lineaire sur l historique de chaque produit. Quand la rupture estimee est proche de `PREDICTIVE_ALERT_DAYS`, une alerte proactive `rupture_prevue` peut etre generee.
+
+Exemple:
+
+```json
 {
   "status": "ok",
   "produit_id": "produit-1",
@@ -170,100 +260,55 @@ Exemple de sortie /prediction:
   "risk_window_days": 3,
   "message": "Au rythme actuel, rupture estimee dans 2.8 jours"
 }
-
-Quand la rupture estimee est proche (<= PREDICTIVE_ALERT_DAYS), une alerte proactive est generee avec type rupture_prevue.
-
-## Guide de Démarrage et Utilisation
-
-Ce guide détaille les étapes pour lancer les différentes briques du projet depuis des terminaux distincts.
-
-### Étape 1 : InfluxDB 3
-Assurez-vous qu'InfluxDB 3 est lancé et accessible.
-- **Port par défaut :** `8181`
-- **Vérification (PowerShell) :** 
-  ```powershell
-  Invoke-WebRequest -Uri "http://127.0.0.1:8181/health" -Method Get
-  ```
-
-### Étape 2 : API Backend (FastAPI)
-Ouvrez un **deuxième terminal** pour le backend.
-```powershell
-cd backend
-python -m venv venv
-.\venv\Scripts\Activate
-pip install -r requirements.txt
-cd ..
-python start_api.py
-```
-- **URL Backend :** http://127.0.0.1:8000
-- **Test de santé de l'API :**
-  ```powershell
-  Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get
-  ```
-
-### Étape 3 : Frontend (React)
-Ouvrez un **troisième terminal** pour l'interface React.
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-- Le dashboard s'ouvrira généralement sur http://localhost:5173 (vérifiez les logs Node.js).
-
-### Étape 4 : Simulation ESP32 (Wokwi & PlatformIO)
-Ouvrez un **quatrième terminal** pour compiler le firmware Wokwi.
-```powershell
-cd esp32
-# 1. Installer PlatformIO
-python -m pip install platformio
-# 2. Compiler le code
-python -m platformio run
-# 3. Fusionner les binaires pour le simulateur
-python -m platformio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32 merge_bin -o .pio/build/esp32dev/firmware.merged.bin --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 .pio/build/esp32dev/bootloader.bin 0x8000 .pio/build/esp32dev/partitions.bin 0x10000 .pio/build/esp32dev/firmware.bin
-```
-**Dans VS Code :**
-1. Arrêtez le simulateur Wokwi si un tourne : `Wokwi: Stop Simulator`.
-2. Lancez le simulateur : `Wokwi: Start Simulator`.
-3. Ouvrez le terminal série depuis l'interface Wokwi.
-
-### Étape 5 (Optionnelle) : Tunnel ngrok
-Si l'ESP32 dans Wokwi a besoin d'accéder au backend local depuis le cloud public, ouvrez un **cinquième terminal** :
-```powershell
-ngrok http 8000
-```
-- *Notes :* Si l'URL ngrok change, mettez à jour `serverUrlNgrokData` et `serverUrlNgrokActuator` dans le fichier `esp32/sketch.ino`.
-
-### Tests Rapides et Débogage
-
-**Logs de l'APIBackend (PowerShell) :**
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/logs/raw?lines=200" -Method Get
 ```
 
-**Forcer manuellement la ventilation :**
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/actuator/command" -ContentType "application/json" -Body '{"command":"force_ventilation"}'
-```
+## Schema InfluxDB 3
 
-Puis relancer le simulateur Wokwi.
+Measurement: `stock_data`
 
-### 4. Tunnel public (optionnel pour Wokwi web)
+Tags:
 
-ngrok http 8000
+- `produit_id`
+- `device_id` optionnel
+- `product`
 
-Remplacer les URLs ngrok dans esp32/sketch.ino.
+Fields:
+
+- `distance` float
+- `humidite` float
+- `etat_relais` int `0/1`
+- `angle_servo` int `0/90`
+- `valeur` int optionnel
+- `temperature_c` float
+
+Time column:
+
+- `time`
 
 ## Exemples SQL InfluxDB 3
 
 Derniers points:
+
+```sql
 SELECT time, produit_id, product, valeur, humidite, etat_relais, angle_servo
 FROM stock_data
 ORDER BY time DESC
 LIMIT 50;
+```
 
 Filtre par produit:
+
+```sql
 SELECT time, valeur, distance, humidite
 FROM stock_data
 WHERE produit_id = 'produit-1'
 ORDER BY time DESC
 LIMIT 100;
+```
+
+## Diagnostic rapide
+
+- Si `GET /health` echoue, verifiez d abord InfluxDB 3 puis le backend.
+- Si le frontend ne charge pas, relancez `npm install` puis `npm run dev`.
+- Si la simulation Wokwi ne recoit rien, verifiez `ngrok` et les URLs dans `esp32/sketch.ino`.
+- Si vous testez les alertes, regardez aussi `GET /alerts` et `GET /logs/raw`.
